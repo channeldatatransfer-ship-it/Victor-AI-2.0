@@ -18,8 +18,15 @@ declare global {
 // SpeechRecognition type declaration for browsers that use webkit prefix
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
+interface Message {
+    id: string;
+    role: 'user' | 'model';
+    text?: string;
+    component?: React.ReactNode;
+}
+
 const App = () => {
-    const [history, setHistory] = useState<{ id: string; role: 'user' | 'model'; text: string }[]>([]);
+    const [history, setHistory] = useState<Message[]>([]);
     const [userInput, setUserInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [isListening, setIsListening] = useState(false);
@@ -28,6 +35,8 @@ const App = () => {
     const [voiceGender, setVoiceGender] = useState<'male' | 'female'>('male');
     const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
+    const [isGameModalOpen, setIsGameModalOpen] = useState(false);
+    const [activeGame, setActiveGame] = useState<'none' | 'tictactoe'>('none');
     
     const chatRef = useRef<Chat | null>(null);
     const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -103,20 +112,20 @@ const App = () => {
     
     useEffect(() => {
         const handleOutsideClick = (event: MouseEvent) => {
-            if (!(event.target as HTMLElement).closest('.message-menu, .message-options-button')) {
+            if (!(event.target as HTMLElement).closest('.message-menu, .message-options-button, .game-modal')) {
                 setActiveMenu(null);
+                setIsGameModalOpen(false);
             }
         };
 
-        if (activeMenu) {
+        if (activeMenu || isGameModalOpen) {
             document.addEventListener('mousedown', handleOutsideClick);
         }
 
         return () => {
             document.removeEventListener('mousedown', handleOutsideClick);
         };
-    }, [activeMenu]);
-
+    }, [activeMenu, isGameModalOpen]);
 
     const speak = (text: string) => {
         if (!window.speechSynthesis || voices.length === 0) return;
@@ -174,9 +183,146 @@ const App = () => {
     };
 
     const handleReadAloud = (text: string) => {
-        speak(text);
+        if (text) speak(text);
         setActiveMenu(null);
     };
+
+    const endGame = () => {
+        setActiveGame('none');
+        setHistory(prev => [...prev, {id: `game-end-${Date.now()}`, role: 'model', text: 'Game concluded. I am ready for your next command, Srabon.'}]);
+    };
+
+    const startTicTacToe = () => {
+        setIsGameModalOpen(false);
+        setActiveGame('tictactoe');
+        const initialBoard = Array(3).fill(null).map(() => Array(3).fill(null));
+        const messages: Message[] = [
+            { id: `game-start-1`, role: 'model', text: `An excellent choice, Srabon. Let's play Tic-Tac-Toe. You are 'X'. Make your move.` },
+            { id: `game-board-1`, role: 'model', component: <TicTacToeBoard board={initialBoard} status="playing" onCellClick={handlePlayerMove} /> }
+        ];
+        setHistory(prev => [...prev, ...messages]);
+    };
+
+    const checkWinner = (board: (string | null)[][]): 'X' | 'O' | 'Draw' | null => {
+        const lines = [
+            // Rows
+            [board[0][0], board[0][1], board[0][2]],
+            [board[1][0], board[1][1], board[1][2]],
+            [board[2][0], board[2][1], board[2][2]],
+            // Columns
+            [board[0][0], board[1][0], board[2][0]],
+            [board[0][1], board[1][1], board[2][1]],
+            [board[0][2], board[1][2], board[2][2]],
+            // Diagonals
+            [board[0][0], board[1][1], board[2][2]],
+            [board[0][2], board[1][1], board[2][0]],
+        ];
+
+        for (const line of lines) {
+            if (line[0] && line[0] === line[1] && line[0] === line[2]) {
+                return line[0] as 'X' | 'O';
+            }
+        }
+
+        if (board.every(row => row.every(cell => cell))) {
+            return 'Draw';
+        }
+
+        return null;
+    };
+    
+    const handlePlayerMove = (row: number, col: number, currentBoard: (string | null)[][]) => {
+        if (currentBoard[row][col] || checkWinner(currentBoard)) return;
+        
+        const newBoard = currentBoard.map(r => [...r]);
+        newBoard[row][col] = 'X';
+
+        setHistory(prev => [...prev, { id: `game-board-${Date.now()}`, role: 'user', component: <TicTacToeBoard board={newBoard} status="playing" onCellClick={() => {}} />}]);
+
+        const winner = checkWinner(newBoard);
+        if (winner) {
+            let endMessage = '';
+            if (winner === 'X') endMessage = "Congratulations, Srabon, you've won!";
+            else if (winner === 'Draw') endMessage = "A draw. A well-played game.";
+            setHistory(prev => [...prev, { id: `game-end-msg-${Date.now()}`, role: 'model', text: endMessage }]);
+            endGame();
+            return;
+        }
+
+        // AI's turn
+        setTimeout(() => handleAiMove(newBoard), 500);
+    };
+
+    const handleAiMove = (currentBoard: (string | null)[][]) => {
+        let bestMove: {row: number, col: number} | null = null;
+        const emptyCells: {row: number, col: number}[] = [];
+        for (let r = 0; r < 3; r++) {
+            for (let c = 0; c < 3; c++) {
+                if (!currentBoard[r][c]) {
+                    emptyCells.push({row: r, col: c});
+                }
+            }
+        }
+
+        // Simple AI: find a winning move or block a winning move
+        for (const player of ['O', 'X']) {
+            for (const move of emptyCells) {
+                const boardCopy = currentBoard.map(r => [...r]);
+                boardCopy[move.row][move.col] = player;
+                if (checkWinner(boardCopy) === player) {
+                    bestMove = move;
+                    break;
+                }
+            }
+            if (bestMove) break;
+        }
+
+        if (!bestMove) { // Otherwise, pick a random empty cell
+            bestMove = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+        }
+        
+        const newBoard = currentBoard.map(r => [...r]);
+        if(bestMove) {
+            newBoard[bestMove.row][bestMove.col] = 'O';
+        }
+
+        const winner = checkWinner(newBoard);
+        const status = winner ? 'finished' : 'playing';
+
+        const aiMoveMessage: Message = { 
+            id: `game-board-${Date.now()}`, 
+            role: 'model', 
+            component: <TicTacToeBoard board={newBoard} status={status} onCellClick={handlePlayerMove} />
+        };
+        
+        setHistory(prev => [...prev, aiMoveMessage]);
+        
+        if (winner) {
+            let endMessage = '';
+            if (winner === 'O') endMessage = "It appears I have won this round. Better luck next time, Srabon.";
+            else if (winner === 'Draw') endMessage = "A draw. A well-played game.";
+            setHistory(prev => [...prev, { id: `game-end-msg-${Date.now()}`, role: 'model', text: endMessage }]);
+            endGame();
+        }
+    };
+    
+    const TicTacToeBoard = ({ board, status, onCellClick }: { board: (string | null)[][], status: string, onCellClick: (row: number, col: number, board: (string|null)[][]) => void }) => (
+        <div className="tic-tac-toe-board">
+            {board.map((row, rIndex) => (
+                row.map((cell, cIndex) => (
+                    <button 
+                        key={`${rIndex}-${cIndex}`} 
+                        className={`tic-tac-toe-cell ${cell ? (cell === 'X' ? 'x' : 'o') : ''}`}
+                        onClick={() => onCellClick(rIndex, cIndex, board)}
+                        disabled={!!cell || status !== 'playing'}
+                        aria-label={`Cell ${rIndex}, ${cIndex} is ${cell || 'empty'}`}
+                    >
+                        {cell}
+                    </button>
+                ))
+            ))}
+        </div>
+    );
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -188,19 +334,19 @@ const App = () => {
           setIsListening(false);
         }
 
-        const userMessage = { id: `user-${Date.now()}`, role: 'user' as const, text: userInput };
+        const userMessage: Message = { id: `user-${Date.now()}`, role: 'user' as const, text: userInput };
         setHistory(prev => [...prev, userMessage]);
         setUserInput('');
         setIsLoading(true);
 
         const modelMessageId = `model-${Date.now()}`;
-        const modelMessage = { id: modelMessageId, role: 'model' as const, text: '' };
+        const modelMessage: Message = { id: modelMessageId, role: 'model' as const, text: '' };
         setHistory(prev => [...prev, modelMessage]);
 
         let fullModelResponse = '';
 
         try {
-            const result = await chatRef.current.sendMessageStream({ message: userMessage.text });
+            const result = await chatRef.current.sendMessageStream({ message: userMessage.text! });
             
             for await (const chunk of result) {
                 const chunkText = chunk.text;
@@ -208,7 +354,7 @@ const App = () => {
                 setHistory(prev => {
                     return prev.map(msg => 
                         msg.id === modelMessageId 
-                        ? { ...msg, text: msg.text + chunkText } 
+                        ? { ...msg, text: (msg.text || '') + chunkText } 
                         : msg
                     );
                 });
@@ -216,8 +362,7 @@ const App = () => {
         } catch (error) {
             console.error("Error sending message:", error);
             fullModelResponse = "Apologies, Srabon. I seem to be having some trouble connecting to the network.";
-            const errorMessage = { role: 'model' as const, text: fullModelResponse };
-             setHistory(prev => {
+            setHistory(prev => {
                 return prev.map(msg => 
                     msg.id === modelMessageId
                     ? { ...msg, text: fullModelResponse }
@@ -237,6 +382,9 @@ const App = () => {
             <header className="app-header">
                 <h1>Victor</h1>
                 <div className="header-controls">
+                     <button onClick={() => setIsGameModalOpen(true)} className="control-button" aria-label="Open game center">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M21.58 16.09l-1.09-1.09-1.09-1.09-1.09-1.09-1.09-1.09-1.09-1.1L15 9.41l-1.09-1.09-1.09-1.09L11.73 6.1l-1.09-1.09-1.09-1.09L8.46 2.83 7.37 1.74 6.28.65 5.19 1.74l-1.1 1.1-1.1 1.1-1.1 1.1L.8 6.13l-1.1 1.1 1.1 1.1 1.1 1.1L3.09 11l1.1 1.1 1.1 1.1 1.1 1.1 1.1 1.1 1.1 1.1 1.1 1.1 1.1 1.09 1.1 1.1 1.09 1.1 1.1 1.1 1.1-1.1 1.1-1.1 1.1-1.1 1.09-1.1zm-3.75-5.34c.28-.28.28-.72 0-1s-.72-.28-1 0l-2.06 2.06-2.06-2.06c-.28-.28-.72-.28-1 0s-.28.72 0 1l2.06 2.06-2.06 2.06c-.28.28-.28.72 0 1s.72.28 1 0l2.06-2.06 2.06 2.06c.28.28.72.28 1 0s.28-.72 0-1l-2.06-2.06zM12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>
+                    </button>
                     <button onClick={toggleTheme} className="control-button" aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}>
                         {theme === 'dark' ? (
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-3.31 0-6-2.69-6-6 0-1.82.89-3.42 2.26-4.4-.44-.06-.9-.1-1.36-.1z"/></svg>
@@ -266,23 +414,26 @@ const App = () => {
                     <div key={msg.id} className={`chat-message ${msg.role}`}>
                          <div className="message-wrapper">
                             <div className="message-bubble">
-                                <p>{msg.text}</p>
+                                {msg.text && <p>{msg.text}</p>}
+                                {msg.component}
                             </div>
-                            <div className="message-actions">
-                                <button className="message-options-button" onClick={() => setActiveMenu(activeMenu === msg.id ? null : msg.id)} aria-label="Message options">
-                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
-                                </button>
-                                {activeMenu === msg.id && (
-                                    <div className="message-menu">
-                                        <button onClick={() => handleCopy(msg.text)}>Copy</button>
-                                        {msg.role === 'model' && <button onClick={() => handleReadAloud(msg.text)}>Read Aloud</button>}
-                                    </div>
-                                )}
-                            </div>
+                            {msg.text && (
+                                <div className="message-actions">
+                                    <button className="message-options-button" onClick={() => setActiveMenu(activeMenu === msg.id ? null : msg.id)} aria-label="Message options">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
+                                    </button>
+                                    {activeMenu === msg.id && (
+                                        <div className="message-menu">
+                                            <button onClick={() => handleCopy(msg.text!)}>Copy</button>
+                                            {msg.role === 'model' && <button onClick={() => handleReadAloud(msg.text!)}>Read Aloud</button>}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
                 ))}
-                {isLoading && !history.find(msg => msg.id.startsWith('model-') && msg.text) && (
+                {isLoading && !history.slice(-1)[0]?.text && (
                      <div className="chat-message model">
                         <div className="message-wrapper">
                              <div className="message-bubble">
@@ -295,27 +446,49 @@ const App = () => {
                 )}
             </main>
             <footer className="input-area">
-                <form onSubmit={handleSubmit}>
-                    <input
-                        type="text"
-                        value={userInput}
-                        onChange={(e) => setUserInput(e.target.value)}
-                        placeholder={isListening ? 'Listening...' : 'Ask Victor...'}
-                        aria-label="User input"
-                        disabled={isLoading || isListening}
-                    />
-                    <button type="button" onClick={handleListenClick} className={`mic-button ${isListening ? 'listening' : ''}`} disabled={isLoading} aria-label="Use microphone">
-                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-                           <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.31 6-6.72h-1.7z"/>
-                        </svg>
-                    </button>
-                    <button type="submit" disabled={isLoading || isListening || !userInput.trim()} aria-label="Send message">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-                           <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-                        </svg>
-                    </button>
-                </form>
+                {activeGame !== 'none' ? (
+                    <button className="game-button" onClick={endGame}>Forfeit Game</button>
+                ) : (
+                    <form onSubmit={handleSubmit}>
+                        <input
+                            type="text"
+                            value={userInput}
+                            onChange={(e) => setUserInput(e.target.value)}
+                            placeholder={isListening ? 'Listening...' : 'Ask Victor...'}
+                            aria-label="User input"
+                            disabled={isLoading || isListening}
+                        />
+                        <button type="button" onClick={handleListenClick} className={`mic-button ${isListening ? 'listening' : ''}`} disabled={isLoading} aria-label="Use microphone">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.31 6-6.72h-1.7z"/>
+                            </svg>
+                        </button>
+                        <button type="submit" disabled={isLoading || isListening || !userInput.trim()} aria-label="Send message">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                            </svg>
+                        </button>
+                    </form>
+                )}
             </footer>
+            {isGameModalOpen && (
+                <div className="game-modal-overlay">
+                    <div className="game-modal">
+                        <h2>Game Center</h2>
+                        <div className="game-list">
+                            <button className="game-selection" onClick={startTicTacToe}>
+                                <h3>Tic-Tac-Toe</h3>
+                                <p>Challenge Victor to a classic match.</p>
+                            </button>
+                            <div className="game-selection disabled">
+                                <h3>More Games</h3>
+                                <p>Coming soon...</p>
+                            </div>
+                        </div>
+                        <button className="close-modal-button" onClick={() => setIsGameModalOpen(false)}>Close</button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
