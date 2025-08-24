@@ -275,7 +275,7 @@ const App = () => {
         const result = chessRef.current.move(move);
         if (result === null) return false;
         const newFen = chessRef.current.fen();
-        setHistory(prev => [...prev, {id: `game-board-chess-user-${Date.now()}`, role: 'user', component: <ChessBoard fen={newFen} onMove={() => {}} />}]);
+        setHistory(prev => [...prev, {id: `game-board-chess-user-${Date.now()}`, role: 'user', component: <ChessBoard fen={newFen} onMove={() => false} />}]);
         if (chessRef.current.isGameOver()) {
             handleChessGameOver();
         } else {
