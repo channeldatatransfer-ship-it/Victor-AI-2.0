@@ -472,6 +472,9 @@ html.light .mic-button.listening {
     cursor: pointer;
     transition: all 0.2s ease;
     color: var(--text-color);
+    width: 100%;
+    font-family: 'Roboto', sans-serif;
+    font-size: 1rem;
 }
 .game-selection:hover {
     border-color: var(--primary-accent-color);
@@ -540,6 +543,72 @@ html.light .mic-button.listening {
     html.light & {
       color: #dc3545;
     }
+}
+
+/* Chess Game */
+.chess-board {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    grid-template-rows: repeat(8, 1fr);
+    width: 100%;
+    max-width: 400px;
+    margin: 1rem auto 0;
+    aspect-ratio: 1 / 1;
+    border: 2px solid var(--border-color);
+    background-color: var(--border-color);
+    border-radius: 4px;
+    box-shadow: 0 5px 15px var(--shadow-color);
+}
+.chess-square {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    cursor: pointer;
+}
+.chess-square.light {
+    background-color: var(--background-color);
+}
+html.light .chess-square.light {
+    background-color: #f0d9b5;
+}
+.chess-square.dark {
+    background-color: var(--user-bubble-bg);
+}
+html.light .chess-square.dark {
+    background-color: #b58863;
+}
+.chess-piece {
+    font-size: clamp(20px, 8vw, 40px);
+    line-height: 1;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    user-select: none;
+    color: var(--text-color);
+}
+html.light .chess-piece {
+    text-shadow: none;
+    color: var(--text-color);
+}
+.chess-square.selected {
+    box-shadow: inset 0 0 0 3px var(--primary-accent-color);
+}
+html.light .chess-square.selected {
+    box-shadow: inset 0 0 0 3px var(--secondary-accent-color);
+}
+.possible-move-indicator {
+    width: 30%;
+    height: 30%;
+    background-color: rgba(0, 229, 255, 0.5);
+    border-radius: 50%;
+}
+.chess-square.possible-move:hover {
+    background-color: rgba(0, 229, 255, 0.2);
+}
+html.light .possible-move-indicator {
+    background-color: rgba(0, 123, 255, 0.4);
+}
+html.light .chess-square.possible-move:hover {
+    background-color: rgba(0, 123, 255, 0.15);
 }
 
 

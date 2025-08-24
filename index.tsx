@@ -6,6 +6,7 @@
 import { GoogleGenAI, Chat } from "@google/genai";
 import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
+import { Chess } from 'chess.js';
 
 // Add type declarations for browser-specific Speech Recognition API
 declare global {
@@ -36,11 +37,12 @@ const App = () => {
     const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
     const [isGameModalOpen, setIsGameModalOpen] = useState(false);
-    const [activeGame, setActiveGame] = useState<'none' | 'tictactoe'>('none');
+    const [activeGame, setActiveGame] = useState<'none' | 'tictactoe' | 'chess'>('none');
     
     const chatRef = useRef<Chat | null>(null);
     const chatContainerRef = useRef<HTMLDivElement>(null);
     const recognitionRef = useRef<any | null>(null);
+    const chessRef = useRef<any>(null);
 
     useEffect(() => {
         document.documentElement.className = theme;
@@ -192,6 +194,7 @@ const App = () => {
         setHistory(prev => [...prev, {id: `game-end-${Date.now()}`, role: 'model', text: 'Game concluded. I am ready for your next command, Srabon.'}]);
     };
 
+    // --- Tic-Tac-Toe Logic ---
     const startTicTacToe = () => {
         setIsGameModalOpen(false);
         setActiveGame('tictactoe');
@@ -205,102 +208,43 @@ const App = () => {
 
     const checkWinner = (board: (string | null)[][]): 'X' | 'O' | 'Draw' | null => {
         const lines = [
-            // Rows
-            [board[0][0], board[0][1], board[0][2]],
-            [board[1][0], board[1][1], board[1][2]],
-            [board[2][0], board[2][1], board[2][2]],
-            // Columns
-            [board[0][0], board[1][0], board[2][0]],
-            [board[0][1], board[1][1], board[2][1]],
-            [board[0][2], board[1][2], board[2][2]],
-            // Diagonals
-            [board[0][0], board[1][1], board[2][2]],
-            [board[0][2], board[1][1], board[2][0]],
+            [board[0][0], board[0][1], board[0][2]], [board[1][0], board[1][1], board[1][2]], [board[2][0], board[2][1], board[2][2]],
+            [board[0][0], board[1][0], board[2][0]], [board[0][1], board[1][1], board[2][1]], [board[0][2], board[1][2], board[2][2]],
+            [board[0][0], board[1][1], board[2][2]], [board[0][2], board[1][1], board[2][0]],
         ];
-
         for (const line of lines) {
-            if (line[0] && line[0] === line[1] && line[0] === line[2]) {
-                return line[0] as 'X' | 'O';
-            }
+            if (line[0] && line[0] === line[1] && line[0] === line[2]) return line[0] as 'X' | 'O';
         }
-
-        if (board.every(row => row.every(cell => cell))) {
-            return 'Draw';
-        }
-
+        if (board.every(row => row.every(cell => cell))) return 'Draw';
         return null;
     };
     
     const handlePlayerMove = (row: number, col: number, currentBoard: (string | null)[][]) => {
         if (currentBoard[row][col] || checkWinner(currentBoard)) return;
-        
         const newBoard = currentBoard.map(r => [...r]);
         newBoard[row][col] = 'X';
-
         setHistory(prev => [...prev, { id: `game-board-${Date.now()}`, role: 'user', component: <TicTacToeBoard board={newBoard} status="playing" onCellClick={() => {}} />}]);
-
         const winner = checkWinner(newBoard);
         if (winner) {
-            let endMessage = '';
-            if (winner === 'X') endMessage = "Congratulations, Srabon, you've won!";
-            else if (winner === 'Draw') endMessage = "A draw. A well-played game.";
+            let endMessage = winner === 'X' ? "Congratulations, Srabon, you've won!" : "A draw. A well-played game.";
             setHistory(prev => [...prev, { id: `game-end-msg-${Date.now()}`, role: 'model', text: endMessage }]);
             endGame();
             return;
         }
-
-        // AI's turn
         setTimeout(() => handleAiMove(newBoard), 500);
     };
 
     const handleAiMove = (currentBoard: (string | null)[][]) => {
-        let bestMove: {row: number, col: number} | null = null;
         const emptyCells: {row: number, col: number}[] = [];
-        for (let r = 0; r < 3; r++) {
-            for (let c = 0; c < 3; c++) {
-                if (!currentBoard[r][c]) {
-                    emptyCells.push({row: r, col: c});
-                }
-            }
-        }
-
-        // Simple AI: find a winning move or block a winning move
-        for (const player of ['O', 'X']) {
-            for (const move of emptyCells) {
-                const boardCopy = currentBoard.map(r => [...r]);
-                boardCopy[move.row][move.col] = player;
-                if (checkWinner(boardCopy) === player) {
-                    bestMove = move;
-                    break;
-                }
-            }
-            if (bestMove) break;
-        }
-
-        if (!bestMove) { // Otherwise, pick a random empty cell
-            bestMove = emptyCells[Math.floor(Math.random() * emptyCells.length)];
-        }
-        
+        for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) if (!currentBoard[r][c]) emptyCells.push({row: r, col: c});
+        const move = emptyCells[Math.floor(Math.random() * emptyCells.length)];
         const newBoard = currentBoard.map(r => [...r]);
-        if(bestMove) {
-            newBoard[bestMove.row][bestMove.col] = 'O';
-        }
-
+        if(move) newBoard[move.row][move.col] = 'O';
         const winner = checkWinner(newBoard);
         const status = winner ? 'finished' : 'playing';
-
-        const aiMoveMessage: Message = { 
-            id: `game-board-${Date.now()}`, 
-            role: 'model', 
-            component: <TicTacToeBoard board={newBoard} status={status} onCellClick={handlePlayerMove} />
-        };
-        
-        setHistory(prev => [...prev, aiMoveMessage]);
-        
+        setHistory(prev => [...prev, { id: `game-board-${Date.now()}`, role: 'model', component: <TicTacToeBoard board={newBoard} status={status} onCellClick={handlePlayerMove} /> }]);
         if (winner) {
-            let endMessage = '';
-            if (winner === 'O') endMessage = "It appears I have won this round. Better luck next time, Srabon.";
-            else if (winner === 'Draw') endMessage = "A draw. A well-played game.";
+            let endMessage = winner === 'O' ? "It appears I have won this round. Better luck next time, Srabon." : "A draw. A well-played game.";
             setHistory(prev => [...prev, { id: `game-end-msg-${Date.now()}`, role: 'model', text: endMessage }]);
             endGame();
         }
@@ -308,21 +252,112 @@ const App = () => {
     
     const TicTacToeBoard = ({ board, status, onCellClick }: { board: (string | null)[][], status: string, onCellClick: (row: number, col: number, board: (string|null)[][]) => void }) => (
         <div className="tic-tac-toe-board">
-            {board.map((row, rIndex) => (
-                row.map((cell, cIndex) => (
-                    <button 
-                        key={`${rIndex}-${cIndex}`} 
-                        className={`tic-tac-toe-cell ${cell ? (cell === 'X' ? 'x' : 'o') : ''}`}
-                        onClick={() => onCellClick(rIndex, cIndex, board)}
-                        disabled={!!cell || status !== 'playing'}
-                        aria-label={`Cell ${rIndex}, ${cIndex} is ${cell || 'empty'}`}
-                    >
-                        {cell}
-                    </button>
-                ))
-            ))}
+            {board.map((row, rIndex) => row.map((cell, cIndex) => (
+                <button key={`${rIndex}-${cIndex}`} className={`tic-tac-toe-cell ${cell ? (cell === 'X' ? 'x' : 'o') : ''}`} onClick={() => onCellClick(rIndex, cIndex, board)} disabled={!!cell || status !== 'playing'} aria-label={`Cell ${rIndex}, ${cIndex} is ${cell || 'empty'}`}>{cell}</button>
+            )))}
         </div>
     );
+
+    // --- Chess Logic ---
+    const startChess = () => {
+        setIsGameModalOpen(false);
+        setActiveGame('chess');
+        chessRef.current = new Chess();
+        const messages: Message[] = [
+            { id: `game-start-chess-1`, role: 'model', text: `Very well, Srabon. A game of Chess it is. You play as White. Your move.` },
+            { id: `game-board-chess-1`, role: 'model', component: <ChessBoard fen={chessRef.current.fen()} onMove={handlePlayerChessMove} /> }
+        ];
+        setHistory(prev => [...prev, ...messages]);
+    };
+
+    const handlePlayerChessMove = (move: any): boolean => {
+        if (!chessRef.current || chessRef.current.isGameOver()) return false;
+        const result = chessRef.current.move(move);
+        if (result === null) return false;
+        const newFen = chessRef.current.fen();
+        setHistory(prev => [...prev, {id: `game-board-chess-user-${Date.now()}`, role: 'user', component: <ChessBoard fen={newFen} onMove={() => {}} />}]);
+        if (chessRef.current.isGameOver()) {
+            handleChessGameOver();
+        } else {
+            setTimeout(() => handleAiChessMove(), 500);
+        }
+        return true;
+    };
+
+    const handleAiChessMove = () => {
+        if (!chessRef.current || chessRef.current.isGameOver()) return;
+        const moves = chessRef.current.moves();
+        const move = moves[Math.floor(Math.random() * moves.length)];
+        chessRef.current.move(move);
+        const newFen = chessRef.current.fen();
+        const messages: Message[] = [{id: `game-board-chess-ai-${Date.now()}`, role: 'model', component: <ChessBoard fen={newFen} onMove={handlePlayerChessMove} />}];
+        if (chessRef.current.inCheck()) {
+            messages.unshift({ id: `chess-check-${Date.now()}`, role: 'model', text: 'Check.' });
+        }
+        setHistory(prev => [...prev, ...messages]);
+        if (chessRef.current.isGameOver()) {
+            handleChessGameOver();
+        }
+    };
+
+    const handleChessGameOver = () => {
+        let message = "The game is over.";
+        if (chessRef.current.isCheckmate()) {
+            message = chessRef.current.turn() !== 'w' ? "Checkmate. An impressive victory, Srabon." : "Checkmate. I have won this time, Srabon.";
+        } else if (chessRef.current.isDraw()) {
+            if (chessRef.current.isStalemate()) message = "Stalemate. The game is a draw.";
+            else if (chessRef.current.isThreefoldRepetition()) message = "Draw by threefold repetition.";
+            else if (chessRef.current.isInsufficientMaterial()) message = "Draw due to insufficient material.";
+            else message = "The game is a draw."
+        }
+        setHistory(prev => [...prev, { id: `game-end-msg-${Date.now()}`, role: 'model', text: message }]);
+        endGame();
+    };
+    
+    const ChessBoard = ({ fen, onMove }: { fen: string, onMove: (move: any) => boolean }) => {
+        const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
+        const chess = new Chess(fen);
+        const possibleMoves = selectedSquare ? chess.moves({ square: selectedSquare, verbose: true }).map(m => m.to) : [];
+
+        const pieceSymbols: { [color: string]: { [type: string]: string } } = {
+            w: { p: '♙', r: '♖', n: '♘', b: '♗', q: '♕', k: '♔' },
+            b: { p: '♟', r: '♜', n: '♞', b: '♝', q: '♛', k: '♚' }
+        };
+
+        const handleSquareClick = (square: string) => {
+            if (chess.turn() !== 'w' || chess.isGameOver()) return;
+            if (selectedSquare) {
+                const move = { from: selectedSquare, to: square, promotion: 'q' };
+                if (!onMove(move)) { // if move was illegal, try selecting the new square
+                    const piece = chess.get(square);
+                    if (piece && piece.color === 'w') setSelectedSquare(square);
+                    else setSelectedSquare(null);
+                } else {
+                    setSelectedSquare(null);
+                }
+            } else {
+                const piece = chess.get(square);
+                if (piece && piece.color === 'w') setSelectedSquare(square);
+            }
+        };
+        
+        const board = [];
+        for (let i = 0; i < 8; i++) {
+            for (let j = 0; j < 8; j++) {
+                const squareInfo = chess.board()[i][j];
+                const squareName = String.fromCharCode(97 + j) + (8 - i);
+                const isLight = (i + j) % 2 !== 0;
+                const isPossibleMove = possibleMoves.includes(squareName);
+                board.push(
+                    <div key={squareName} className={`chess-square ${isLight ? 'light' : 'dark'} ${selectedSquare === squareName ? 'selected' : ''} ${isPossibleMove ? 'possible-move' : ''}`} onClick={() => handleSquareClick(squareName)}>
+                        {squareInfo && <span className={`chess-piece ${squareInfo.color}`}>{pieceSymbols[squareInfo.color][squareInfo.type]}</span>}
+                        {isPossibleMove && !squareInfo && <div className="possible-move-indicator"></div>}
+                    </div>
+                );
+            }
+        }
+        return <div className="chess-board">{board}</div>;
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -480,10 +515,10 @@ const App = () => {
                                 <h3>Tic-Tac-Toe</h3>
                                 <p>Challenge Victor to a classic match.</p>
                             </button>
-                            <div className="game-selection disabled">
-                                <h3>More Games</h3>
-                                <p>Coming soon...</p>
-                            </div>
+                            <button className="game-selection" onClick={startChess}>
+                                <h3>Chess</h3>
+                                <p>A classic strategy game against Victor.</p>
+                            </button>
                         </div>
                         <button className="close-modal-button" onClick={() => setIsGameModalOpen(false)}>Close</button>
                     </div>
