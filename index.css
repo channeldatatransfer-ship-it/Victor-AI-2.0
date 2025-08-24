@@ -168,6 +168,17 @@ html.light .glow-line {
   align-self: flex-start;
 }
 
+.message-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.chat-message.user .message-wrapper {
+  flex-direction: row-reverse;
+}
+
 .message-bubble {
   padding: 0.75rem 1rem;
   border-radius: 1rem;
@@ -190,6 +201,78 @@ html.light .glow-line {
   border-bottom-left-radius: 0.25rem;
   border: 1px solid var(--border-color);
   box-shadow: 0 0 15px var(--shadow-color);
+}
+
+.message-actions {
+    position: relative;
+}
+
+.message-options-button {
+    background: none;
+    border: none;
+    color: var(--text-muted-color);
+    cursor: pointer;
+    padding: 0.5rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: all 0.2s ease;
+}
+
+.message-wrapper:hover .message-options-button,
+.message-options-button:focus,
+.message-menu ~ .message-options-button {
+    opacity: 1;
+}
+
+.message-options-button:hover {
+    color: var(--text-color);
+    background-color: var(--control-button-hover-bg);
+}
+
+.message-options-button svg {
+    width: 20px;
+    height: 20px;
+}
+
+.message-menu {
+    position: absolute;
+    bottom: 100%;
+    margin-bottom: 0.25rem;
+    background-color: var(--user-bubble-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px var(--shadow-color);
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 120px;
+}
+
+.chat-message.user .message-menu {
+    right: 0;
+}
+
+.chat-message.model .message-menu {
+    left: 0;
+}
+
+.message-menu button {
+    background: none;
+    border: none;
+    text-align: left;
+    padding: 0.6rem 1rem;
+    color: var(--text-color);
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: background-color 0.2s ease;
+}
+
+.message-menu button:hover {
+    background-color: var(--control-button-hover-bg);
 }
 
 .input-area {

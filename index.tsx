@@ -19,7 +19,7 @@ declare global {
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 const App = () => {
-    const [history, setHistory] = useState<{ role: 'user' | 'model'; text: string }[]>([]);
+    const [history, setHistory] = useState<{ id: string; role: 'user' | 'model'; text: string }[]>([]);
     const [userInput, setUserInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [isListening, setIsListening] = useState(false);
@@ -27,6 +27,7 @@ const App = () => {
     const [theme, setTheme] = useState<'dark' | 'light'>('dark');
     const [voiceGender, setVoiceGender] = useState<'male' | 'female'>('male');
     const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+    const [activeMenu, setActiveMenu] = useState<string | null>(null);
     
     const chatRef = useRef<Chat | null>(null);
     const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -54,10 +55,10 @@ const App = () => {
                         systemInstruction: "You are Victor, a sophisticated and helpful AI assistant. Your user's name is Srabon. Always address him as Srabon. Respond with a blend of professionalism, wit, and a slightly futuristic tone. Keep your answers concise and to the point. Format your responses with markdown.",
                     },
                 });
-                setHistory([{ role: 'model', text: 'Good day, Srabon. Victor online and ready to assist.' }]);
+                setHistory([{ id: 'init-1', role: 'model', text: 'Good day, Srabon. Victor online and ready to assist.' }]);
             } catch (error) {
                 console.error("Failed to initialize chat:", error);
-                setHistory([{ role: 'model', text: 'Error: Could not initialize AI services. Please check configuration.' }]);
+                setHistory([{ id: 'init-error-1', role: 'model', text: 'Error: Could not initialize AI services. Please check configuration.' }]);
             }
         };
         initChat();
@@ -99,9 +100,26 @@ const App = () => {
 
         recognitionRef.current = recognition;
     }, []);
+    
+    useEffect(() => {
+        const handleOutsideClick = (event: MouseEvent) => {
+            if (!(event.target as HTMLElement).closest('.message-menu, .message-options-button')) {
+                setActiveMenu(null);
+            }
+        };
+
+        if (activeMenu) {
+            document.addEventListener('mousedown', handleOutsideClick);
+        }
+
+        return () => {
+            document.removeEventListener('mousedown', handleOutsideClick);
+        };
+    }, [activeMenu]);
+
 
     const speak = (text: string) => {
-        if (!isTtsEnabled || !window.speechSynthesis || voices.length === 0) return;
+        if (!window.speechSynthesis || voices.length === 0) return;
 
         speechSynthesis.cancel(); // Stop any previous speech
         const utterance = new SpeechSynthesisUtterance(text);
@@ -149,6 +167,16 @@ const App = () => {
     const toggleVoiceGender = () => {
         setVoiceGender(prev => prev === 'male' ? 'female' : 'male');
     }
+    
+    const handleCopy = (text: string) => {
+        navigator.clipboard.writeText(text);
+        setActiveMenu(null);
+    };
+
+    const handleReadAloud = (text: string) => {
+        speak(text);
+        setActiveMenu(null);
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -160,12 +188,13 @@ const App = () => {
           setIsListening(false);
         }
 
-        const userMessage = { role: 'user' as const, text: userInput };
+        const userMessage = { id: `user-${Date.now()}`, role: 'user' as const, text: userInput };
         setHistory(prev => [...prev, userMessage]);
         setUserInput('');
         setIsLoading(true);
 
-        const modelMessage = { role: 'model' as const, text: '' };
+        const modelMessageId = `model-${Date.now()}`;
+        const modelMessage = { id: modelMessageId, role: 'model' as const, text: '' };
         setHistory(prev => [...prev, modelMessage]);
 
         let fullModelResponse = '';
@@ -177,12 +206,11 @@ const App = () => {
                 const chunkText = chunk.text;
                 fullModelResponse += chunkText;
                 setHistory(prev => {
-                    const newHistory = [...prev];
-                    const lastMessage = newHistory[newHistory.length - 1];
-                    if (lastMessage.role === 'model') {
-                        lastMessage.text += chunkText;
-                    }
-                    return newHistory;
+                    return prev.map(msg => 
+                        msg.id === modelMessageId 
+                        ? { ...msg, text: msg.text + chunkText } 
+                        : msg
+                    );
                 });
             }
         } catch (error) {
@@ -190,13 +218,15 @@ const App = () => {
             fullModelResponse = "Apologies, Srabon. I seem to be having some trouble connecting to the network.";
             const errorMessage = { role: 'model' as const, text: fullModelResponse };
              setHistory(prev => {
-                const newHistory = [...prev];
-                newHistory[newHistory.length - 1] = errorMessage;
-                return newHistory;
+                return prev.map(msg => 
+                    msg.id === modelMessageId
+                    ? { ...msg, text: fullModelResponse }
+                    : msg
+                );
             });
         } finally {
             setIsLoading(false);
-            if (fullModelResponse) {
+            if (isTtsEnabled && fullModelResponse) {
                 speak(fullModelResponse);
             }
         }
@@ -232,19 +262,34 @@ const App = () => {
                 <div className="glow-line"></div>
             </header>
             <main className="chat-container" ref={chatContainerRef}>
-                {history.map((msg, index) => (
-                    <div key={index} className={`chat-message ${msg.role}`}>
-                        <div className="message-bubble">
-                            <p>{msg.text}</p>
+                {history.map((msg) => (
+                    <div key={msg.id} className={`chat-message ${msg.role}`}>
+                         <div className="message-wrapper">
+                            <div className="message-bubble">
+                                <p>{msg.text}</p>
+                            </div>
+                            <div className="message-actions">
+                                <button className="message-options-button" onClick={() => setActiveMenu(activeMenu === msg.id ? null : msg.id)} aria-label="Message options">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
+                                </button>
+                                {activeMenu === msg.id && (
+                                    <div className="message-menu">
+                                        <button onClick={() => handleCopy(msg.text)}>Copy</button>
+                                        {msg.role === 'model' && <button onClick={() => handleReadAloud(msg.text)}>Read Aloud</button>}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 ))}
-                {isLoading && history[history.length -1]?.role === 'user' && (
+                {isLoading && !history.find(msg => msg.id.startsWith('model-') && msg.text) && (
                      <div className="chat-message model">
-                        <div className="message-bubble">
-                           <div className="typing-indicator">
-                                <span></span><span></span><span></span>
-                           </div>
+                        <div className="message-wrapper">
+                             <div className="message-bubble">
+                               <div className="typing-indicator">
+                                    <span></span><span></span><span></span>
+                               </div>
+                            </div>
                         </div>
                     </div>
                 )}
