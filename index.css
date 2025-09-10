@@ -156,6 +156,7 @@ html.light .glow-line {
 .chat-message {
   display: flex;
   max-width: 80%;
+  animation: slideUpFadeIn 0.5s ease-out forwards;
 }
 
 .chat-message.user {
@@ -425,6 +426,17 @@ html.light .mic-button.listening {
   }
   100% {
     box-shadow: 0 0 0 0 rgba(0, 229, 255, 0);
+  }
+}
+
+@keyframes slideUpFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 

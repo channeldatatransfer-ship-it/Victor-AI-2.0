@@ -3,10 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+// Fix: Import Square type from chess.js
 import { GoogleGenAI, Chat } from "@google/genai";
 import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
-import { Chess } from 'chess.js';
+import { Chess, Square } from 'chess.js';
 
 // Add type declarations for browser-specific Speech Recognition API
 declare global {
@@ -42,7 +43,8 @@ const App = () => {
     const chatRef = useRef<Chat | null>(null);
     const chatContainerRef = useRef<HTMLDivElement>(null);
     const recognitionRef = useRef<any | null>(null);
-    const chessRef = useRef<any>(null);
+    // Fix: Type chessRef to provide better type checking and avoid errors.
+    const chessRef = useRef<Chess | null>(null);
 
     useEffect(() => {
         document.documentElement.className = theme;
@@ -287,6 +289,10 @@ const App = () => {
     const handleAiChessMove = () => {
         if (!chessRef.current || chessRef.current.isGameOver()) return;
         const moves = chessRef.current.moves();
+        // Fix: Add a guard to prevent errors when no moves are available.
+        if (moves.length === 0) {
+            return;
+        }
         const move = moves[Math.floor(Math.random() * moves.length)];
         chessRef.current.move(move);
         const newFen = chessRef.current.fen();
@@ -315,7 +321,8 @@ const App = () => {
     };
     
     const ChessBoard = ({ fen, onMove }: { fen: string, onMove: (move: any) => boolean }) => {
-        const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
+        // Fix: Use the Square type for selectedSquare state.
+        const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
         const chess = new Chess(fen);
         const possibleMoves = selectedSquare ? chess.moves({ square: selectedSquare, verbose: true }).map(m => m.to) : [];
 
@@ -324,7 +331,8 @@ const App = () => {
             b: { p: '♟', r: '♜', n: '♞', b: '♝', q: '♛', k: '♚' }
         };
 
-        const handleSquareClick = (square: string) => {
+        // Fix: Use the Square type for the square parameter.
+        const handleSquareClick = (square: Square) => {
             if (chess.turn() !== 'w' || chess.isGameOver()) return;
             if (selectedSquare) {
                 const move = { from: selectedSquare, to: square, promotion: 'q' };
@@ -345,7 +353,8 @@ const App = () => {
         for (let i = 0; i < 8; i++) {
             for (let j = 0; j < 8; j++) {
                 const squareInfo = chess.board()[i][j];
-                const squareName = String.fromCharCode(97 + j) + (8 - i);
+                // Fix: Cast the generated square name to the Square type.
+                const squareName = (String.fromCharCode(97 + j) + (8 - i)) as Square;
                 const isLight = (i + j) % 2 !== 0;
                 const isPossibleMove = possibleMoves.includes(squareName);
                 board.push(
@@ -424,7 +433,7 @@ const App = () => {
                         {theme === 'dark' ? (
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-3.31 0-6-2.69-6-6 0-1.82.89-3.42 2.26-4.4-.44-.06-.9-.1-1.36-.1z"/></svg>
                         ) : (
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zM2 13h2c.03-.89.24-1.74.58-2.5L3.17 9.09 4.59 7.67l1.41 1.41C6.26 8.84 7.11 8.63 8 8.59V6h2v2.59c.89.04 1.74.25 2.5.58l1.41-1.41 1.41 1.41-1.41 1.41c.34.76.55 1.61.58 2.5h2v-2h-2c-.04-.89-.25-1.74-.58-2.5l1.41-1.41-1.41-1.41-1.41 1.41c-.76-.34-1.61-.55-2.5-.58V4h-2v2.59c-.89-.04-1.74-.25-2.5-.58L6 4.59 4.59 6l1.41 1.41C5.66 8.16 5.45 9.01 5.41 10H3v2h2.01zM11 18.01V16h2v2.01c.89-.04 1.74-.25 2.5-.58l1.41 1.41 1.41-1.41-1.41-1.41c.34-.76.55-1.61.58-2.5h2v-2h-2.01c-.03.89-.24 1.74-.58 2.5l1.41 1.41-1.41 1.41-1.41-1.41c-.76.34-1.61.55-2.5.58z"/></svg>
+                            <svg xmlns="http://www.w.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zM2 13h2c.03-.89.24-1.74.58-2.5L3.17 9.09 4.59 7.67l1.41 1.41C6.26 8.84 7.11 8.63 8 8.59V6h2v2.59c.89.04 1.74.25 2.5.58l1.41-1.41 1.41 1.41-1.41 1.41c.34.76.55 1.61.58 2.5h2v-2h-2c-.04-.89-.25-1.74-.58-2.5l1.41-1.41-1.41-1.41-1.41 1.41c-.76-.34-1.61-.55-2.5-.58V4h-2v2.59c-.89-.04-1.74-.25-2.5-.58L6 4.59 4.59 6l1.41 1.41C5.66 8.16 5.45 9.01 5.41 10H3v2h2.01zM11 18.01V16h2v2.01c.89-.04 1.74-.25 2.5-.58l1.41 1.41 1.41-1.41-1.41-1.41c.34-.76.55-1.61.58-2.5h2v-2h-2.01c-.03.89-.24 1.74-.58 2.5l1.41 1.41-1.41 1.41-1.41-1.41c-.76.34-1.61.55-2.5.58z"/></svg>
                         )}
                     </button>
                     <button onClick={toggleVoiceGender} className={`control-button ${voiceGender === 'female' ? 'active' : ''}`} aria-label={`Switch to ${voiceGender === 'male' ? 'female' : 'male'} voice`}>
@@ -445,12 +454,17 @@ const App = () => {
                 <div className="glow-line"></div>
             </header>
             <main className="chat-container" ref={chatContainerRef}>
-                {history.map((msg) => (
+                {history.map((msg, index) => (
                     <div key={msg.id} className={`chat-message ${msg.role}`}>
                          <div className="message-wrapper">
                             <div className="message-bubble">
                                 {msg.text && <p>{msg.text}</p>}
                                 {msg.component}
+                                {isLoading && index === history.length - 1 && !msg.text && !msg.component && (
+                                    <div className="typing-indicator">
+                                        <span></span><span></span><span></span>
+                                    </div>
+                                )}
                             </div>
                             {msg.text && (
                                 <div className="message-actions">
@@ -468,17 +482,6 @@ const App = () => {
                         </div>
                     </div>
                 ))}
-                {isLoading && !history.slice(-1)[0]?.text && (
-                     <div className="chat-message model">
-                        <div className="message-wrapper">
-                             <div className="message-bubble">
-                               <div className="typing-indicator">
-                                    <span></span><span></span><span></span>
-                               </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
             </main>
             <footer className="input-area">
                 {activeGame !== 'none' ? (
