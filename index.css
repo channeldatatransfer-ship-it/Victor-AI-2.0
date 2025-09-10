@@ -623,6 +623,73 @@ html.light .chess-square.possible-move:hover {
     background-color: rgba(0, 123, 255, 0.15);
 }
 
+/* Image Generator */
+.image-generator-area {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+.image-generator-area form {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background-color: var(--model-bubble-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 2rem;
+  padding: 0.25rem;
+  padding-left: 1rem;
+  box-shadow: 0 0 20px var(--shadow-color);
+  transition: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+.image-generator-area input {
+  flex-grow: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-color);
+  font-size: 1rem;
+  padding: 0.5rem 0;
+  font-family: 'Roboto', sans-serif;
+}
+.image-generator-area input::placeholder {
+  color: var(--text-muted-color);
+}
+.image-generator-area button[type="submit"] {
+  background-color: var(--primary-accent-color);
+  color: var(--button-text-color);
+  box-shadow: 0 0 10px var(--primary-accent-color);
+}
+.image-generator-area button[type="submit"]:hover:not(:disabled) {
+  transform: scale(1.1);
+  box-shadow: 0 0 15px var(--secondary-accent-color);
+}
+.image-generator-area .game-button {
+    margin-top: 0.5rem;
+}
+.loader {
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top: 3px solid #fff;
+  width: 20px;
+  height: 20px;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+.generated-image {
+    max-width: 100%;
+    border-radius: 0.75rem;
+    margin-top: 0.5rem;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    display: block;
+}
+html.dark .generated-image {
+    box-shadow: 0 4px 15px var(--shadow-color);
+}
+
 
 /* Scrollbar */
 ::-webkit-scrollbar {

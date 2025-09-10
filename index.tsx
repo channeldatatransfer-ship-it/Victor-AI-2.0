@@ -38,8 +38,9 @@ const App = () => {
     const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
     const [isGameModalOpen, setIsGameModalOpen] = useState(false);
-    const [activeGame, setActiveGame] = useState<'none' | 'tictactoe' | 'chess'>('none');
+    const [activeGame, setActiveGame] = useState<'none' | 'tictactoe' | 'chess' | 'imagegeneration'>('none');
     
+    const aiRef = useRef<GoogleGenAI | null>(null);
     const chatRef = useRef<Chat | null>(null);
     const chatContainerRef = useRef<HTMLDivElement>(null);
     const recognitionRef = useRef<any | null>(null);
@@ -62,6 +63,7 @@ const App = () => {
         const initChat = () => {
             try {
                 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+                aiRef.current = ai;
                 chatRef.current = ai.chats.create({
                     model: 'gemini-2.5-flash',
                     config: {
@@ -191,9 +193,14 @@ const App = () => {
         setActiveMenu(null);
     };
 
-    const endGame = () => {
+    const exitTool = () => {
+        let toolName = 'Game';
+        if (activeGame === 'tictactoe') toolName = 'Tic-Tac-Toe';
+        else if (activeGame === 'chess') toolName = 'Chess';
+        else if (activeGame === 'imagegeneration') toolName = 'Image Generation';
+
         setActiveGame('none');
-        setHistory(prev => [...prev, {id: `game-end-${Date.now()}`, role: 'model', text: 'Game concluded. I am ready for your next command, Srabon.'}]);
+        setHistory(prev => [...prev, {id: `tool-end-${Date.now()}`, role: 'model', text: `${toolName} concluded. I am ready for your next command, Srabon.`}]);
     };
 
     // --- Tic-Tac-Toe Logic ---
@@ -230,7 +237,7 @@ const App = () => {
         if (winner) {
             let endMessage = winner === 'X' ? "Congratulations, Srabon, you've won!" : "A draw. A well-played game.";
             setHistory(prev => [...prev, { id: `game-end-msg-${Date.now()}`, role: 'model', text: endMessage }]);
-            endGame();
+            exitTool();
             return;
         }
         setTimeout(() => handleAiMove(newBoard), 500);
@@ -248,7 +255,7 @@ const App = () => {
         if (winner) {
             let endMessage = winner === 'O' ? "It appears I have won this round. Better luck next time, Srabon." : "A draw. A well-played game.";
             setHistory(prev => [...prev, { id: `game-end-msg-${Date.now()}`, role: 'model', text: endMessage }]);
-            endGame();
+            exitTool();
         }
     };
     
@@ -317,7 +324,7 @@ const App = () => {
             else message = "The game is a draw."
         }
         setHistory(prev => [...prev, { id: `game-end-msg-${Date.now()}`, role: 'model', text: message }]);
-        endGame();
+        exitTool();
     };
     
     const ChessBoard = ({ fen, onMove }: { fen: string, onMove: (move: any) => boolean }) => {
@@ -368,6 +375,85 @@ const App = () => {
         return <div className="chess-board">{board}</div>;
     };
 
+    // --- Image Generation Logic ---
+    const startImageGeneration = () => {
+        setIsGameModalOpen(false);
+        setActiveGame('imagegeneration');
+        setHistory(prev => [...prev, {id: `img-gen-start-${Date.now()}`, role: 'model', text: 'Image generation activated. Please provide a detailed prompt, Srabon.'}]);
+    };
+
+    const handleGenerateImage = async (prompt: string, displayText?: string) => {
+        if (!aiRef.current) return;
+        setIsLoading(true);
+
+        const userMessage: Message = { id: `user-img-prompt-${Date.now()}`, role: 'user', text: displayText ?? prompt };
+        setHistory(prev => [...prev, userMessage]);
+        
+        const modelMessageId = `model-img-loading-${Date.now()}`;
+        const loadingMessage: Message = { id: modelMessageId, role: 'model', component: <div className="typing-indicator"><span></span><span></span><span></span></div> };
+        setHistory(prev => [...prev, loadingMessage]);
+
+        try {
+            const response = await aiRef.current.models.generateImages({
+                model: 'imagen-4.0-generate-001',
+                prompt: prompt,
+                config: {
+                  numberOfImages: 1,
+                },
+            });
+    
+            if (response.generatedImages && response.generatedImages.length > 0) {
+                const image = response.generatedImages[0];
+                const base64ImageBytes: string = image.image.imageBytes;
+                const imageUrl = `data:image/png;base64,${base64ImageBytes}`;
+    
+                const imageComponent = <img src={imageUrl} alt={prompt} className="generated-image" />;
+                setHistory(prev => prev.map(msg => msg.id === modelMessageId ? { ...msg, component: imageComponent, text: undefined } : msg));
+    
+            } else {
+                const errorMessage = "My apologies, Srabon. I was unable to generate the image.";
+                setHistory(prev => prev.map(msg => msg.id === modelMessageId ? { ...msg, text: errorMessage, component: undefined } : msg));
+            }
+
+        } catch (error) {
+            console.error("Image generation error:", error);
+            const errorMessage = "My apologies, Srabon. I encountered an error while generating the image. The service may be unavailable.";
+            setHistory(prev => prev.map(msg => msg.id === modelMessageId ? { ...msg, text: errorMessage, component: undefined } : msg));
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const ImageGeneratorInput = ({ onGenerate, onExit, isLoading }: { onGenerate: (prompt: string) => void, onExit: () => void, isLoading: boolean }) => {
+        const [prompt, setPrompt] = useState('');
+
+        const handleSubmit = (e: React.FormEvent) => {
+            e.preventDefault();
+            if (!prompt.trim() || isLoading) return;
+            onGenerate(prompt);
+            setPrompt('');
+        };
+
+        return (
+            <div className="image-generator-area">
+                <form onSubmit={handleSubmit}>
+                    <input
+                        type="text"
+                        value={prompt}
+                        onChange={(e) => setPrompt(e.target.value)}
+                        placeholder="Describe the image you want to create..."
+                        disabled={isLoading}
+                        aria-label="Image prompt"
+                    />
+                    <button type="submit" disabled={isLoading || !prompt.trim()} aria-label="Generate image">
+                         {isLoading ? <div className="loader"></div> : <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M7 14c-1.66 0-3 1.34-3 3 0 1.31-1.16 2-2 2 .92 1.22 2.49 2 4 2 2.21 0 4-1.79 4-4 0-1.66-1.34-3-3-3zm13.71-9.37c-.39-.39-1.02-.39-1.41 0L18 5.92 14.08 2 12 2C9.79 2 8 3.79 8 6v6c0 1.1.9 2 2 2h2v5c0 .55.45 1 1 1s1-.45 1-1v-5h2c1.1 0 2-.9 2-2V8.83l1.29-1.29c.39-.39.39-1.02 0-1.41z"/></svg>}
+                    </button>
+                </form>
+                <button className="game-button" onClick={onExit} disabled={isLoading}>Exit Generator</button>
+            </div>
+        );
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!userInput.trim() || isLoading || !chatRef.current) return;
@@ -376,6 +462,16 @@ const App = () => {
         if (isListening) {
           recognitionRef.current?.stop();
           setIsListening(false);
+        }
+
+        const trimmedInput = userInput.trim();
+        const imagineCommandMatch = trimmedInput.match(/^\/imagine\s+(.+)/s);
+
+        if (imagineCommandMatch && imagineCommandMatch[1]) {
+            const prompt = imagineCommandMatch[1];
+            setUserInput('');
+            await handleGenerateImage(prompt, trimmedInput);
+            return;
         }
 
         const userMessage: Message = { id: `user-${Date.now()}`, role: 'user' as const, text: userInput };
@@ -426,14 +522,14 @@ const App = () => {
             <header className="app-header">
                 <h1>Victor</h1>
                 <div className="header-controls">
-                     <button onClick={() => setIsGameModalOpen(true)} className="control-button" aria-label="Open game center">
+                     <button onClick={() => setIsGameModalOpen(true)} className="control-button" aria-label="Open toolbox">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M21.58 16.09l-1.09-1.09-1.09-1.09-1.09-1.09-1.09-1.09-1.09-1.1L15 9.41l-1.09-1.09-1.09-1.09L11.73 6.1l-1.09-1.09-1.09-1.09L8.46 2.83 7.37 1.74 6.28.65 5.19 1.74l-1.1 1.1-1.1 1.1-1.1 1.1L.8 6.13l-1.1 1.1 1.1 1.1 1.1 1.1L3.09 11l1.1 1.1 1.1 1.1 1.1 1.1 1.1 1.1 1.1 1.1 1.1 1.1 1.1 1.09 1.1 1.1 1.09 1.1 1.1 1.1 1.1-1.1 1.1-1.1 1.1-1.1 1.09-1.1zm-3.75-5.34c.28-.28.28-.72 0-1s-.72-.28-1 0l-2.06 2.06-2.06-2.06c-.28-.28-.72-.28-1 0s-.28.72 0 1l2.06 2.06-2.06 2.06c-.28.28-.28.72 0 1s.72.28 1 0l2.06-2.06 2.06 2.06c.28.28.72.28 1 0s.28-.72 0-1l-2.06-2.06zM12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>
                     </button>
                     <button onClick={toggleTheme} className="control-button" aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}>
                         {theme === 'dark' ? (
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-3.31 0-6-2.69-6-6 0-1.82.89-3.42 2.26-4.4-.44-.06-.9-.1-1.36-.1z"/></svg>
                         ) : (
-                            <svg xmlns="http://www.w.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zM2 13h2c.03-.89.24-1.74.58-2.5L3.17 9.09 4.59 7.67l1.41 1.41C6.26 8.84 7.11 8.63 8 8.59V6h2v2.59c.89.04 1.74.25 2.5.58l1.41-1.41 1.41 1.41-1.41 1.41c.34.76.55 1.61.58 2.5h2v-2h-2c-.04-.89-.25-1.74-.58-2.5l1.41-1.41-1.41-1.41-1.41 1.41c-.76-.34-1.61-.55-2.5-.58V4h-2v2.59c-.89-.04-1.74-.25-2.5-.58L6 4.59 4.59 6l1.41 1.41C5.66 8.16 5.45 9.01 5.41 10H3v2h2.01zM11 18.01V16h2v2.01c.89-.04 1.74-.25 2.5-.58l1.41 1.41 1.41-1.41-1.41-1.41c.34-.76.55-1.61.58-2.5h2v-2h-2.01c-.03.89-.24 1.74-.58 2.5l1.41 1.41-1.41 1.41-1.41-1.41c-.76.34-1.61.55-2.5.58z"/></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zM2 13h2c.03-.89.24-1.74.58-2.5L3.17 9.09 4.59 7.67l1.41 1.41C6.26 8.84 7.11 8.63 8 8.59V6h2v2.59c.89.04 1.74.25 2.5.58l1.41-1.41 1.41 1.41-1.41 1.41c.34.76.55 1.61.58 2.5h2v-2h-2c-.04-.89-.25-1.74-.58-2.5l1.41-1.41-1.41-1.41-1.41 1.41c-.76-.34-1.61-.55-2.5-.58V4h-2v2.59c-.89-.04-1.74-.25-2.5-.58L6 4.59 4.59 6l1.41 1.41C5.66 8.16 5.45 9.01 5.41 10H3v2h2.01zM11 18.01V16h2v2.01c.89-.04 1.74-.25 2.5-.58l1.41 1.41 1.41-1.41-1.41-1.41c.34-.76.55-1.61.58-2.5h2v-2h-2.01c-.03.89-.24 1.74-.58 2.5l1.41 1.41-1.41 1.41-1.41-1.41c-.76.34-1.61.55-2.5.58z"/></svg>
                         )}
                     </button>
                     <button onClick={toggleVoiceGender} className={`control-button ${voiceGender === 'female' ? 'active' : ''}`} aria-label={`Switch to ${voiceGender === 'male' ? 'female' : 'male'} voice`}>
@@ -483,16 +579,14 @@ const App = () => {
                     </div>
                 ))}
             </main>
-            <footer className="input-area">
-                {activeGame !== 'none' ? (
-                    <button className="game-button" onClick={endGame}>Forfeit Game</button>
-                ) : (
+             <footer className="input-area">
+                {activeGame === 'none' ? (
                     <form onSubmit={handleSubmit}>
                         <input
                             type="text"
                             value={userInput}
                             onChange={(e) => setUserInput(e.target.value)}
-                            placeholder={isListening ? 'Listening...' : 'Ask Victor...'}
+                            placeholder={isListening ? 'Listening...' : 'Ask Victor, or type /imagine <prompt>'}
                             aria-label="User input"
                             disabled={isLoading || isListening}
                         />
@@ -507,13 +601,21 @@ const App = () => {
                             </svg>
                         </button>
                     </form>
+                ) : activeGame === 'imagegeneration' ? (
+                     <ImageGeneratorInput onGenerate={handleGenerateImage} onExit={exitTool} isLoading={isLoading} />
+                ) : (
+                    <button className="game-button" onClick={exitTool}>Forfeit Game</button>
                 )}
             </footer>
             {isGameModalOpen && (
                 <div className="game-modal-overlay">
                     <div className="game-modal">
-                        <h2>Game Center</h2>
+                        <h2>Toolbox</h2>
                         <div className="game-list">
+                             <button className="game-selection" onClick={startImageGeneration}>
+                                <h3>Image Generation</h3>
+                                <p>Create an image with a text prompt.</p>
+                            </button>
                             <button className="game-selection" onClick={startTicTacToe}>
                                 <h3>Tic-Tac-Toe</h3>
                                 <p>Challenge Victor to a classic match.</p>
